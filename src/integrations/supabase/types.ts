@@ -14,16 +14,265 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      assessments: {
+        Row: {
+          ai_model: string | null
+          ai_summary: string | null
+          created_at: string
+          differentials: Json | null
+          id: string
+          intake_id: string
+          patient_id: string
+          recommended_actions: string[] | null
+          red_flags: string[] | null
+          risk_level: Database["public"]["Enums"]["risk_level"]
+          risk_score: number
+          rule_breakdown: Json | null
+        }
+        Insert: {
+          ai_model?: string | null
+          ai_summary?: string | null
+          created_at?: string
+          differentials?: Json | null
+          id?: string
+          intake_id: string
+          patient_id: string
+          recommended_actions?: string[] | null
+          red_flags?: string[] | null
+          risk_level: Database["public"]["Enums"]["risk_level"]
+          risk_score: number
+          rule_breakdown?: Json | null
+        }
+        Update: {
+          ai_model?: string | null
+          ai_summary?: string | null
+          created_at?: string
+          differentials?: Json | null
+          id?: string
+          intake_id?: string
+          patient_id?: string
+          recommended_actions?: string[] | null
+          red_flags?: string[] | null
+          risk_level?: Database["public"]["Enums"]["risk_level"]
+          risk_score?: number
+          rule_breakdown?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assessments_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "patient_intakes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      audit_logs: {
+        Row: {
+          action: string
+          created_at: string
+          id: string
+          metadata: Json | null
+          resource_id: string | null
+          resource_type: string | null
+          user_id: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          resource_id?: string | null
+          resource_type?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          resource_id?: string | null
+          resource_type?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      doctor_notes: {
+        Row: {
+          created_at: string
+          diagnosis: string | null
+          doctor_id: string
+          follow_up: string | null
+          id: string
+          intake_id: string
+          notes: string | null
+          override_risk: Database["public"]["Enums"]["risk_level"] | null
+          treatment_plan: string | null
+        }
+        Insert: {
+          created_at?: string
+          diagnosis?: string | null
+          doctor_id: string
+          follow_up?: string | null
+          id?: string
+          intake_id: string
+          notes?: string | null
+          override_risk?: Database["public"]["Enums"]["risk_level"] | null
+          treatment_plan?: string | null
+        }
+        Update: {
+          created_at?: string
+          diagnosis?: string | null
+          doctor_id?: string
+          follow_up?: string | null
+          id?: string
+          intake_id?: string
+          notes?: string | null
+          override_risk?: Database["public"]["Enums"]["risk_level"] | null
+          treatment_plan?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "doctor_notes_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "patient_intakes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      patient_intakes: {
+        Row: {
+          age: number | null
+          allergies: string | null
+          chief_complaint: string
+          created_at: string
+          current_medications: string | null
+          duration_days: number | null
+          id: string
+          medical_history: string | null
+          notes: string | null
+          patient_id: string
+          severity: number | null
+          sex: string | null
+          status: Database["public"]["Enums"]["intake_status"]
+          symptoms: string[]
+          updated_at: string
+          vitals: Json | null
+        }
+        Insert: {
+          age?: number | null
+          allergies?: string | null
+          chief_complaint: string
+          created_at?: string
+          current_medications?: string | null
+          duration_days?: number | null
+          id?: string
+          medical_history?: string | null
+          notes?: string | null
+          patient_id: string
+          severity?: number | null
+          sex?: string | null
+          status?: Database["public"]["Enums"]["intake_status"]
+          symptoms?: string[]
+          updated_at?: string
+          vitals?: Json | null
+        }
+        Update: {
+          age?: number | null
+          allergies?: string | null
+          chief_complaint?: string
+          created_at?: string
+          current_medications?: string | null
+          duration_days?: number | null
+          id?: string
+          medical_history?: string | null
+          notes?: string | null
+          patient_id?: string
+          severity?: number | null
+          sex?: string | null
+          status?: Database["public"]["Enums"]["intake_status"]
+          symptoms?: string[]
+          updated_at?: string
+          vitals?: Json | null
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          date_of_birth: string | null
+          email: string | null
+          full_name: string | null
+          gender: string | null
+          id: string
+          phone: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          date_of_birth?: string | null
+          email?: string | null
+          full_name?: string | null
+          gender?: string | null
+          id: string
+          phone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          date_of_birth?: string | null
+          email?: string | null
+          full_name?: string | null
+          gender?: string | null
+          id?: string
+          phone?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_primary_role: {
+        Args: { _user_id: string }
+        Returns: Database["public"]["Enums"]["app_role"]
+      }
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "doctor" | "patient"
+      intake_status: "pending" | "in_review" | "completed" | "archived"
+      risk_level: "low" | "moderate" | "high" | "critical"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +399,10 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "doctor", "patient"],
+      intake_status: ["pending", "in_review", "completed", "archived"],
+      risk_level: ["low", "moderate", "high", "critical"],
+    },
   },
 } as const
