@@ -194,7 +194,7 @@ function CaseDetail() {
   const { intake, assessment, notes, patient } = data;
 
   return (
-    <div className="container mx-auto max-w-4xl px-4 py-8">
+    <div className="mx-auto max-w-4xl p-6 md:p-8">
       <Link to={isClinician ? "/doctor" : "/patient"}>
         <Button variant="ghost" size="sm" className="gap-2"><ArrowLeft className="h-4 w-4" /> Back</Button>
       </Link>
