@@ -139,6 +139,12 @@ function NewIntake() {
 
     const assessment = triageResult.assessment;
 
+    if (!assessment) {
+      toast.error("Case saved, but the assessment could not be attached.");
+      navigate({ to: "/cases/$id", params: { id: intake.id } });
+      return;
+    }
+
     await supabase.from("audit_logs").insert({
       user_id: user!.id,
       action: "intake_submitted",
