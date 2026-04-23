@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { intakeSchema } from "@/lib/schemas";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
+import { generateAssessmentForIntake } from "@/lib/triage";
 import { Loader2, X, Plus } from "lucide-react";
 
 export const Route = createFileRoute("/patient/new")({
@@ -24,9 +25,20 @@ export const Route = createFileRoute("/patient/new")({
 });
 
 const SUGGESTED = [
-  "fever", "cough", "fatigue", "headache", "shortness of breath",
-  "chest pain", "nausea", "vomiting", "diarrhea", "abdominal pain",
-  "dizziness", "rash", "sore throat", "back pain",
+  "fever",
+  "cough",
+  "fatigue",
+  "headache",
+  "shortness of breath",
+  "chest pain",
+  "nausea",
+  "vomiting",
+  "diarrhea",
+  "abdominal pain",
+  "dizziness",
+  "rash",
+  "sore throat",
+  "back pain",
 ];
 
 function NewIntake() {
@@ -59,6 +71,7 @@ function NewIntake() {
     if (!v || form.symptoms.includes(v) || form.symptoms.length >= 30) return;
     setForm((f) => ({ ...f, symptoms: [...f.symptoms, v], symptomInput: "" }));
   };
+
   const removeSymptom = (s: string) =>
     setForm((f) => ({ ...f, symptoms: f.symptoms.filter((x) => x !== s) }));
 
@@ -66,6 +79,7 @@ function NewIntake() {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+
     const vitals = {
       heart_rate: num(form.heart_rate),
       systolic_bp: num(form.systolic_bp),
@@ -97,59 +111,43 @@ function NewIntake() {
 
     setLoading(true);
 
-    const { data: intake, error: e1 } = await supabase
+    const { data: intake, error: intakeError } = await supabase
       .from("patient_intakes")
       .insert({ ...payload, patient_id: user!.id })
       .select()
       .single();
-    if (e1 || !intake) {
+
+    if (intakeError || !intake) {
       setLoading(false);
-      toast.error(e1?.message ?? "Failed to save intake");
+      toast.error(intakeError?.message ?? "Failed to save intake");
       return;
     }
 
-    const { data: triageData, error: e2 } = await supabase.functions.invoke("triage", {
-      body: payload,
-    });
-
-    if (e2) {
-      setLoading(false);
-      toast.error(e2.message ?? "AI triage failed");
-      return;
-    }
-
-    if ((triageData as any)?.error) {
-      setLoading(false);
-      toast.error((triageData as any).error);
-      return;
-    }
-
-    const t = triageData as any;
-    const { error: e3 } = await supabase.from("assessments").insert({
-      intake_id: intake.id,
-      patient_id: user!.id,
-      risk_score: t.risk_score,
-      risk_level: t.risk_level,
-      red_flags: t.red_flags ?? [],
-      differentials: t.differentials ?? [],
-      recommended_actions: t.recommended_actions ?? [],
-      ai_summary: t.ai_summary ?? "",
-      ai_model: t.ai_model ?? null,
-      rule_breakdown: t.rule_breakdown ?? {},
+    const triageResult = await generateAssessmentForIntake({
+      intakeId: intake.id,
+      patientId: user!.id,
+      payload,
     });
 
     setLoading(false);
-    if (e3) {
-      toast.error(e3.message);
+
+    if (triageResult.error) {
+      toast.error(`Case saved. ${triageResult.error}`);
+      navigate({ to: "/cases/$id", params: { id: intake.id } });
       return;
     }
+
+    const assessment = triageResult.assessment;
 
     await supabase.from("audit_logs").insert({
       user_id: user!.id,
       action: "intake_submitted",
       resource_type: "patient_intakes",
       resource_id: intake.id,
-      metadata: { risk_level: t.risk_level, risk_score: t.risk_score },
+      metadata: {
+        risk_level: assessment.risk_level,
+        risk_score: assessment.risk_score,
+      },
     });
 
     toast.success("Assessment ready");
@@ -159,13 +157,22 @@ function NewIntake() {
   return (
     <div className="mx-auto max-w-3xl p-6 md:p-8">
       <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">New assessment</h1>
-      <p className="mt-1 text-sm text-muted-foreground">Fill in your symptoms — optional fields improve accuracy.</p>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Fill in your symptoms — optional fields improve accuracy.
+      </p>
 
       <form onSubmit={submit} className="mt-8 space-y-5">
         <Card className="space-y-4 p-6">
           <div>
             <Label htmlFor="cc">Chief complaint *</Label>
-            <Textarea id="cc" required maxLength={500} placeholder="What's the main reason for your visit?" value={form.chief_complaint} onChange={(e) => setForm({ ...form, chief_complaint: e.target.value })} />
+            <Textarea
+              id="cc"
+              required
+              maxLength={500}
+              placeholder="What's the main reason for your visit?"
+              value={form.chief_complaint}
+              onChange={(e) => setForm({ ...form, chief_complaint: e.target.value })}
+            />
           </div>
 
           <div>
@@ -174,7 +181,9 @@ function NewIntake() {
               {form.symptoms.map((s) => (
                 <Badge key={s} variant="secondary" className="gap-1">
                   {s}
-                  <button type="button" onClick={() => removeSymptom(s)}><X className="h-3 w-3" /></button>
+                  <button type="button" onClick={() => removeSymptom(s)}>
+                    <X className="h-3 w-3" />
+                  </button>
                 </Badge>
               ))}
             </div>
@@ -184,41 +193,79 @@ function NewIntake() {
                 value={form.symptomInput}
                 onChange={(e) => setForm({ ...form, symptomInput: e.target.value })}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") { e.preventDefault(); addSymptom(form.symptomInput); }
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addSymptom(form.symptomInput);
+                  }
                 }}
               />
-              <Button type="button" variant="outline" size="icon" onClick={() => addSymptom(form.symptomInput)}>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={() => addSymptom(form.symptomInput)}
+              >
                 <Plus className="h-4 w-4" />
               </Button>
             </div>
             <div className="mt-2 flex flex-wrap gap-1">
-              {SUGGESTED.filter((s) => !form.symptoms.includes(s)).slice(0, 10).map((s) => (
-                <button key={s} type="button" onClick={() => addSymptom(s)} className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground hover:bg-accent">
-                  + {s}
-                </button>
-              ))}
+              {SUGGESTED.filter((s) => !form.symptoms.includes(s))
+                .slice(0, 10)
+                .map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => addSymptom(s)}
+                    className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground hover:bg-accent"
+                  >
+                    + {s}
+                  </button>
+                ))}
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label>Duration (days)</Label>
-              <Input type="number" min={0} max={3650} value={form.duration_days} onChange={(e) => setForm({ ...form, duration_days: Number(e.target.value) })} />
+              <Input
+                type="number"
+                min={0}
+                max={3650}
+                value={form.duration_days}
+                onChange={(e) => setForm({ ...form, duration_days: Number(e.target.value) })}
+              />
             </div>
             <div>
               <Label>Severity ({form.severity}/10)</Label>
-              <Slider min={1} max={10} step={1} value={[form.severity]} onValueChange={(v) => setForm({ ...form, severity: v[0] })} className="mt-3" />
+              <Slider
+                min={1}
+                max={10}
+                step={1}
+                value={[form.severity]}
+                onValueChange={(v) => setForm({ ...form, severity: v[0] })}
+                className="mt-3"
+              />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label>Age</Label>
-              <Input type="number" min={0} max={130} value={form.age} onChange={(e) => setForm({ ...form, age: Number(e.target.value) })} />
+              <Input
+                type="number"
+                min={0}
+                max={130}
+                value={form.age}
+                onChange={(e) => setForm({ ...form, age: Number(e.target.value) })}
+              />
             </div>
             <div>
               <Label>Sex</Label>
-              <select className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" value={form.sex} onChange={(e) => setForm({ ...form, sex: e.target.value as any })}>
+              <select
+                className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+                value={form.sex}
+                onChange={(e) => setForm({ ...form, sex: e.target.value as "male" | "female" | "other" })}
+              >
                 <option value="male">Male</option>
                 <option value="female">Female</option>
                 <option value="other">Other</option>
@@ -243,7 +290,12 @@ function NewIntake() {
             ].map(([k, label]) => (
               <div key={k}>
                 <Label>{label}</Label>
-                <Input type="number" step="0.1" value={(form as any)[k]} onChange={(e) => setForm({ ...form, [k]: e.target.value } as any)} />
+                <Input
+                  type="number"
+                  step="0.1"
+                  value={(form as Record<string, string | string[] | number>)[k] as string}
+                  onChange={(e) => setForm({ ...form, [k]: e.target.value } as typeof form)}
+                />
               </div>
             ))}
           </div>
@@ -252,16 +304,28 @@ function NewIntake() {
         <Card className="space-y-4 p-6">
           <div>
             <Label>Medical history (optional)</Label>
-            <Textarea maxLength={2000} value={form.medical_history} onChange={(e) => setForm({ ...form, medical_history: e.target.value })} />
+            <Textarea
+              maxLength={2000}
+              value={form.medical_history}
+              onChange={(e) => setForm({ ...form, medical_history: e.target.value })}
+            />
           </div>
           <div className="grid gap-4 md:grid-cols-2">
             <div>
               <Label>Current medications</Label>
-              <Textarea maxLength={1000} value={form.current_medications} onChange={(e) => setForm({ ...form, current_medications: e.target.value })} />
+              <Textarea
+                maxLength={1000}
+                value={form.current_medications}
+                onChange={(e) => setForm({ ...form, current_medications: e.target.value })}
+              />
             </div>
             <div>
               <Label>Allergies</Label>
-              <Textarea maxLength={500} value={form.allergies} onChange={(e) => setForm({ ...form, allergies: e.target.value })} />
+              <Textarea
+                maxLength={500}
+                value={form.allergies}
+                onChange={(e) => setForm({ ...form, allergies: e.target.value })}
+              />
             </div>
           </div>
         </Card>

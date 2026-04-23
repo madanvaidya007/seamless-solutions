@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { RiskBadge } from "@/components/RiskBadge";
 import { useAuth } from "@/lib/auth";
+import { generateAssessmentForIntake } from "@/lib/triage";
 import { format } from "date-fns";
 import { Loader2, AlertTriangle, FileDown, ArrowLeft } from "lucide-react";
 import type { RiskLevel } from "@/lib/risk";
@@ -41,6 +42,7 @@ function CaseDetail() {
   const [loading, setLoading] = useState(true);
   const [savingStatus, setSavingStatus] = useState(false);
   const [savingNote, setSavingNote] = useState(false);
+  const [generatingAssessment, setGeneratingAssessment] = useState(false);
   const [note, setNote] = useState({
     diagnosis: "",
     treatment_plan: "",
@@ -57,10 +59,12 @@ function CaseDetail() {
       .select("*")
       .eq("id", id)
       .maybeSingle();
+
     if (!intake) {
       setLoading(false);
       return;
     }
+
     const { data: assessment } = await supabase
       .from("assessments")
       .select("*")
@@ -68,33 +72,78 @@ function CaseDetail() {
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
+
     const { data: notes } = await supabase
       .from("doctor_notes")
       .select("*")
       .eq("intake_id", id)
       .order("created_at", { ascending: false });
+
     const { data: patient } = await supabase
       .from("profiles")
       .select("full_name, email")
       .eq("id", intake.patient_id)
       .maybeSingle();
+
     setData({ intake, assessment, notes: notes ?? [], patient });
     setLoading(false);
   }, [id]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const updateStatus = async (status: "pending" | "in_review" | "completed" | "archived") => {
     setSavingStatus(true);
     const { error } = await supabase.from("patient_intakes").update({ status }).eq("id", id);
     setSavingStatus(false);
-    if (error) toast.error(error.message);
-    else { toast.success("Status updated"); load(); }
+
+    if (error) {
+      toast.error(error.message);
+    } else {
+      toast.success("Status updated");
+      load();
+    }
+  };
+
+  const generateAssessment = async () => {
+    if (!data) return;
+
+    const payload = {
+      chief_complaint: data.intake.chief_complaint,
+      symptoms: data.intake.symptoms ?? [],
+      duration_days: data.intake.duration_days ?? undefined,
+      severity: data.intake.severity ?? undefined,
+      age: data.intake.age ?? undefined,
+      sex: data.intake.sex ?? undefined,
+      medical_history: data.intake.medical_history ?? undefined,
+      current_medications: data.intake.current_medications ?? undefined,
+      allergies: data.intake.allergies ?? undefined,
+      notes: data.intake.notes ?? undefined,
+      vitals: data.intake.vitals ?? {},
+    };
+
+    setGeneratingAssessment(true);
+    const result = await generateAssessmentForIntake({
+      intakeId: data.intake.id,
+      patientId: data.intake.patient_id,
+      payload,
+    });
+    setGeneratingAssessment(false);
+
+    if (result.error) {
+      toast.error(result.error);
+      return;
+    }
+
+    toast.success("AI assessment ready");
+    load();
   };
 
   const submitNote = async (e: React.FormEvent) => {
     e.preventDefault();
     setSavingNote(true);
+
     const { error } = await supabase.from("doctor_notes").insert({
       intake_id: id,
       doctor_id: user!.id,
@@ -104,8 +153,14 @@ function CaseDetail() {
       notes: note.notes || null,
       override_risk: note.override_risk || null,
     });
+
     setSavingNote(false);
-    if (error) { toast.error(error.message); return; }
+
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+
     toast.success("Note added");
     setNote({ diagnosis: "", treatment_plan: "", follow_up: "", notes: "", override_risk: "" });
     load();
@@ -113,8 +168,10 @@ function CaseDetail() {
 
   const exportPdf = () => {
     if (!data) return;
+
     const doc = new jsPDF();
     const { intake, assessment, notes, patient } = data;
+
     doc.setFontSize(18);
     doc.text("MediTriage AI — Case Report", 14, 18);
     doc.setFontSize(10);
@@ -158,6 +215,7 @@ function CaseDetail() {
           ["Recommended actions", (assessment.recommended_actions || []).join("; ") || "—"],
         ],
       });
+
       const diffs = assessment.differentials || [];
       if (diffs.length) {
         autoTable(doc, {
@@ -185,8 +243,13 @@ function CaseDetail() {
   };
 
   if (loading) {
-    return <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin" /></div>;
+    return (
+      <div className="flex justify-center py-20">
+        <Loader2 className="h-6 w-6 animate-spin" />
+      </div>
+    );
   }
+
   if (!data) {
     return <div className="container mx-auto max-w-2xl py-20 text-center">Case not found.</div>;
   }
@@ -196,7 +259,9 @@ function CaseDetail() {
   return (
     <div className="mx-auto max-w-4xl p-6 md:p-8">
       <Link to={isClinician ? "/doctor" : "/patient"}>
-        <Button variant="ghost" size="sm" className="gap-2"><ArrowLeft className="h-4 w-4" /> Back</Button>
+        <Button variant="ghost" size="sm" className="gap-2">
+          <ArrowLeft className="h-4 w-4" /> Back
+        </Button>
       </Link>
 
       <div className="mt-4 flex flex-wrap items-start justify-between gap-3">
@@ -208,8 +273,12 @@ function CaseDetail() {
         </div>
         <div className="flex items-center gap-2">
           {assessment && <RiskBadge level={assessment.risk_level} score={assessment.risk_score} />}
-          <Badge variant="secondary" className="capitalize">{intake.status.replace("_", " ")}</Badge>
-          <Button variant="outline" size="sm" onClick={exportPdf} className="gap-2"><FileDown className="h-4 w-4" /> PDF</Button>
+          <Badge variant="secondary" className="capitalize">
+            {intake.status.replace("_", " ")}
+          </Badge>
+          <Button variant="outline" size="sm" onClick={exportPdf} className="gap-2">
+            <FileDown className="h-4 w-4" /> PDF
+          </Button>
         </div>
       </div>
 
@@ -231,7 +300,7 @@ function CaseDetail() {
           <h2 className="font-semibold">Vitals</h2>
           <dl className="mt-3 grid grid-cols-2 gap-2 text-sm">
             {Object.entries(intake.vitals || {}).map(([k, v]) =>
-              v == null ? null : <Row key={k} k={k.replace(/_/g, " ")} v={String(v)} />
+              v == null ? null : <Row key={k} k={k.replace(/_/g, " ")} v={String(v)} />,
             )}
             {!intake.vitals || Object.keys(intake.vitals).length === 0 ? (
               <p className="text-muted-foreground">Not recorded</p>
@@ -239,6 +308,22 @@ function CaseDetail() {
           </dl>
         </Card>
       </div>
+
+      {!assessment && (
+        <Card className="mt-4 p-5">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="font-semibold">AI assessment pending</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                This case was saved before the AI result was attached.
+              </p>
+            </div>
+            <Button onClick={generateAssessment} disabled={generatingAssessment} className="min-w-40">
+              {generatingAssessment ? <Loader2 className="h-4 w-4 animate-spin" /> : "Generate AI now"}
+            </Button>
+          </div>
+        </Card>
+      )}
 
       {assessment && (
         <Card className="mt-4 p-5">
@@ -269,7 +354,9 @@ function CaseDetail() {
                   <div key={i} className="rounded-md border p-3 text-sm">
                     <div className="flex items-center justify-between">
                       <span className="font-medium">{d.condition}</span>
-                      <Badge variant="outline" className="capitalize">{d.likelihood}</Badge>
+                      <Badge variant="outline" className="capitalize">
+                        {d.likelihood}
+                      </Badge>
                     </div>
                     <p className="mt-1 text-muted-foreground">{d.rationale}</p>
                   </div>
@@ -282,14 +369,18 @@ function CaseDetail() {
             <>
               <h3 className="mt-4 text-sm font-semibold">Recommended actions</h3>
               <ul className="mt-2 list-inside list-disc text-sm text-muted-foreground">
-                {assessment.recommended_actions.map((a: string, i: number) => <li key={i}>{a}</li>)}
+                {assessment.recommended_actions.map((a: string, i: number) => (
+                  <li key={i}>{a}</li>
+                ))}
               </ul>
             </>
           )}
 
           <details className="mt-4">
             <summary className="cursor-pointer text-xs text-muted-foreground">Risk score breakdown</summary>
-            <pre className="mt-2 overflow-auto rounded-md bg-muted p-3 text-xs">{JSON.stringify(assessment.rule_breakdown, null, 2)}</pre>
+            <pre className="mt-2 overflow-auto rounded-md bg-muted p-3 text-xs">
+              {JSON.stringify(assessment.rule_breakdown, null, 2)}
+            </pre>
           </details>
 
           <p className="mt-4 text-xs text-muted-foreground">
@@ -298,7 +389,6 @@ function CaseDetail() {
         </Card>
       )}
 
-      {/* Doctor controls */}
       {isClinician && (
         <Card className="mt-4 p-5">
           <h2 className="font-semibold">Clinical workflow</h2>
@@ -325,7 +415,11 @@ function CaseDetail() {
               </div>
               <div>
                 <Label>Override risk</Label>
-                <select className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm" value={note.override_risk} onChange={(e) => setNote({ ...note, override_risk: e.target.value as any })}>
+                <select
+                  className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={note.override_risk}
+                  onChange={(e) => setNote({ ...note, override_risk: e.target.value as RiskLevel | "" })}
+                >
                   <option value="">— keep AI score —</option>
                   <option value="low">Low</option>
                   <option value="moderate">Moderate</option>
@@ -364,7 +458,11 @@ function CaseDetail() {
                 {n.treatment_plan && <p><b>Plan:</b> {n.treatment_plan}</p>}
                 {n.follow_up && <p><b>Follow-up:</b> {n.follow_up}</p>}
                 {n.notes && <p className="mt-1 text-muted-foreground">{n.notes}</p>}
-                {n.override_risk && <Badge variant="outline" className="mt-2 capitalize">Risk overridden → {n.override_risk}</Badge>}
+                {n.override_risk && (
+                  <Badge variant="outline" className="mt-2 capitalize">
+                    Risk overridden → {n.override_risk}
+                  </Badge>
+                )}
               </div>
             ))}
           </div>
