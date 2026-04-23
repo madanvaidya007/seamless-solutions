@@ -1,4 +1,4 @@
 project_id = "fsyuvvrnzqxcqnijcaag"
 
 [functions.triage]
-verify_jwt = true
+verify_jwt = false
