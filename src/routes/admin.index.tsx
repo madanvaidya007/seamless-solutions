@@ -5,7 +5,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
 import { format } from "date-fns";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
+import { lazy, Suspense } from "react";
+
+const Charts = lazy(() => import("@/components/AdminCharts"));
 
 export const Route = createFileRoute("/admin/")({
   head: () => ({ meta: [{ title: "Admin — MediTriage AI" }] }),
@@ -15,8 +17,6 @@ export const Route = createFileRoute("/admin/")({
     </RequireAuth>
   ),
 });
-
-const COLORS = ["#3aa9b8", "#6dd49a", "#f0b964", "#e36b6b"];
 
 function Admin() {
   const [loading, setLoading] = useState(true);
@@ -76,34 +76,10 @@ function Admin() {
         <Stat label="Avg risk score" value={stats.avgScore} />
       </div>
 
-      <div className="mt-6 grid gap-4 md:grid-cols-2">
-        <Card className="p-5">
-          <h2 className="font-semibold">Assessments per day</h2>
-          <div className="mt-4 h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={stats.perDay}>
-                <XAxis dataKey="day" stroke="currentColor" fontSize={12} />
-                <YAxis stroke="currentColor" fontSize={12} />
-                <Tooltip />
-                <Bar dataKey="count" fill="#3aa9b8" radius={[6, 6, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </Card>
-        <Card className="p-5">
-          <h2 className="font-semibold">Risk distribution</h2>
-          <div className="mt-4 h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={stats.riskBuckets} dataKey="value" nameKey="name" outerRadius={80} label>
-                  {stats.riskBuckets.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                </Pie>
-                <Legend />
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-        </Card>
+      <div className="mt-6">
+        <Suspense fallback={<div className="h-64 flex items-center justify-center"><Loader2 className="h-5 w-5 animate-spin" /></div>}>
+          <Charts perDay={stats.perDay} riskBuckets={stats.riskBuckets} />
+        </Suspense>
       </div>
 
       <Card className="mt-6 p-5">

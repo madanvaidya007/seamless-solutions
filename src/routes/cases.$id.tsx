@@ -15,8 +15,6 @@ import { Loader2, AlertTriangle, FileDown, ArrowLeft } from "lucide-react";
 import type { RiskLevel } from "@/lib/risk";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
 
 export const Route = createFileRoute("/cases/$id")({
   head: () => ({ meta: [{ title: "Case Detail — MediTriage AI" }] }),
@@ -111,8 +109,12 @@ function CaseDetail() {
     load();
   };
 
-  const exportPdf = () => {
+  const exportPdf = async () => {
     if (!data) return;
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import("jspdf"),
+      import("jspdf-autotable"),
+    ]);
     const doc = new jsPDF();
     const { intake, assessment, notes, patient } = data;
     doc.setFontSize(18);
