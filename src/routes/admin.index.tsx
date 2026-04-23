@@ -18,8 +18,6 @@ export const Route = createFileRoute("/admin/")({
   ),
 });
 
-const COLORS = ["#3aa9b8", "#6dd49a", "#f0b964", "#e36b6b"];
-
 function Admin() {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
