@@ -84,7 +84,7 @@ function CaseDetail() {
 
   useEffect(() => { load(); }, [load]);
 
-  const updateStatus = async (status: string) => {
+  const updateStatus = async (status: "pending" | "in_review" | "completed" | "archived") => {
     setSavingStatus(true);
     const { error } = await supabase.from("patient_intakes").update({ status }).eq("id", id);
     setSavingStatus(false);
