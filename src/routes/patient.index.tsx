@@ -6,9 +6,10 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { RiskBadge } from "@/components/RiskBadge";
+import { PageHeader } from "@/components/AppShell";
 import { useAuth } from "@/lib/auth";
 import { format } from "date-fns";
-import { Plus, Loader2 } from "lucide-react";
+import { Plus, Loader2, ClipboardList, Activity, AlertTriangle } from "lucide-react";
 import type { RiskLevel } from "@/lib/risk";
 
 export const Route = createFileRoute("/patient/")({
@@ -46,19 +47,32 @@ function PatientHome() {
       });
   }, [user]);
 
+  const totalCases = items.length;
+  const highRisk = items.filter((i) => {
+    const r = i.assessments?.[0]?.risk_level;
+    return r === "high" || r === "critical";
+  }).length;
+  const pending = items.filter((i) => i.status === "pending" || i.status === "in_review").length;
+
   return (
-    <div className="container mx-auto max-w-4xl px-4 py-10">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-semibold tracking-tight">My Cases</h1>
-          <p className="text-sm text-muted-foreground">Track your assessments and clinician notes.</p>
-        </div>
-        <Link to="/patient/new">
-          <Button className="gap-2"><Plus className="h-4 w-4" /> New assessment</Button>
-        </Link>
+    <div className="p-6 md:p-8">
+      <PageHeader
+        title="My Cases"
+        subtitle="Track your assessments and clinician notes."
+        actions={
+          <Link to="/patient/new">
+            <Button className="gap-2 shadow-soft"><Plus className="h-4 w-4" /> New assessment</Button>
+          </Link>
+        }
+      />
+
+      <div className="mt-6 grid gap-4 sm:grid-cols-3">
+        <StatCard icon={ClipboardList} label="Total cases" value={totalCases} tone="primary" />
+        <StatCard icon={Activity} label="Active" value={pending} tone="warning" />
+        <StatCard icon={AlertTriangle} label="High / critical" value={highRisk} tone="destructive" />
       </div>
 
-      <div className="mt-8 space-y-3">
+      <div className="mt-6 space-y-3">
         {loading ? (
           <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
         ) : items.length === 0 ? (
@@ -73,7 +87,7 @@ function PatientHome() {
             const a = it.assessments?.[0];
             return (
               <Link key={it.id} to="/cases/$id" params={{ id: it.id }}>
-                <Card className="flex items-center justify-between p-5 transition hover:shadow-elegant">
+                <Card className="flex items-center justify-between gap-4 p-5 transition hover:-translate-y-0.5 hover:shadow-elegant">
                   <div className="min-w-0">
                     <p className="truncate font-medium">{it.chief_complaint}</p>
                     <p className="text-xs text-muted-foreground">{format(new Date(it.created_at), "PPp")}</p>
@@ -89,5 +103,34 @@ function PatientHome() {
         )}
       </div>
     </div>
+  );
+}
+
+function StatCard({
+  icon: Icon,
+  label,
+  value,
+  tone,
+}: {
+  icon: typeof Activity;
+  label: string;
+  value: number;
+  tone: "primary" | "warning" | "destructive";
+}) {
+  const toneMap = {
+    primary: "bg-accent text-primary",
+    warning: "bg-warning/15 text-warning",
+    destructive: "bg-destructive/10 text-destructive",
+  } as const;
+  return (
+    <Card className="flex items-center gap-4 p-5">
+      <div className={`flex h-11 w-11 items-center justify-center rounded-xl ${toneMap[tone]}`}>
+        <Icon className="h-5 w-5" />
+      </div>
+      <div>
+        <p className="text-xs uppercase tracking-wider text-muted-foreground">{label}</p>
+        <p className="text-2xl font-semibold">{value}</p>
+      </div>
+    </Card>
   );
 }
