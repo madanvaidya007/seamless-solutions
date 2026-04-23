@@ -6,9 +6,9 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { RiskBadge } from "@/components/RiskBadge";
-import { useAuth } from "@/lib/auth";
+import { PageHeader } from "@/components/AppShell";
 import { format } from "date-fns";
-import { Loader2 } from "lucide-react";
+import { Loader2, Users, AlertTriangle, Activity } from "lucide-react";
 import type { RiskLevel } from "@/lib/risk";
 
 export const Route = createFileRoute("/doctor/")({
@@ -26,45 +26,85 @@ interface QueueRow {
   status: string;
   created_at: string;
   patient_id: string;
-  profiles: { full_name: string | null; email: string | null } | null;
   assessments: { risk_score: number; risk_level: RiskLevel }[] | null;
+  // Joined locally
+  patient_name?: string;
+  patient_email?: string;
 }
 
 function DoctorQueue() {
-  const { } = useAuth();
   const [items, setItems] = useState<QueueRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"active" | "all">("active");
 
   useEffect(() => {
-    let q = supabase
-      .from("patient_intakes")
-      .select("id, chief_complaint, status, created_at, patient_id, profiles!patient_intakes_patient_id_fkey(full_name, email), assessments(risk_score, risk_level)");
-    if (filter === "active") q = q.in("status", ["pending", "in_review"]);
+    let cancelled = false;
+    setLoading(true);
+    (async () => {
+      let q = supabase
+        .from("patient_intakes")
+        .select("id, chief_complaint, status, created_at, patient_id, assessments(risk_score, risk_level)");
+      if (filter === "active") q = q.in("status", ["pending", "in_review"]);
 
-    q.order("created_at", { ascending: false }).then(({ data }) => {
+      const { data } = await q.order("created_at", { ascending: false });
       const rows = ((data as any) ?? []) as QueueRow[];
-      // sort by risk score desc
-      rows.sort((a, b) => (b.assessments?.[0]?.risk_score ?? 0) - (a.assessments?.[0]?.risk_score ?? 0));
-      setItems(rows);
-      setLoading(false);
-    });
+
+      const ids = Array.from(new Set(rows.map((r) => r.patient_id)));
+      let profilesMap: Record<string, { full_name: string | null; email: string | null }> = {};
+      if (ids.length) {
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select("id, full_name, email")
+          .in("id", ids);
+        profilesMap = Object.fromEntries((profiles ?? []).map((p: any) => [p.id, p]));
+      }
+
+      const enriched = rows.map((r) => ({
+        ...r,
+        patient_name: profilesMap[r.patient_id]?.full_name ?? undefined,
+        patient_email: profilesMap[r.patient_id]?.email ?? undefined,
+      }));
+      enriched.sort((a, b) => (b.assessments?.[0]?.risk_score ?? 0) - (a.assessments?.[0]?.risk_score ?? 0));
+
+      if (!cancelled) {
+        setItems(enriched);
+        setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [filter]);
 
+  const counts = {
+    total: items.length,
+    high: items.filter((i) => {
+      const r = i.assessments?.[0]?.risk_level;
+      return r === "high" || r === "critical";
+    }).length,
+    pending: items.filter((i) => i.status === "pending").length,
+  };
+
   return (
-    <div className="container mx-auto max-w-5xl px-4 py-10">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-semibold tracking-tight">Triage queue</h1>
-          <p className="text-sm text-muted-foreground">Patients sorted by AI risk score.</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant={filter === "active" ? "default" : "outline"} size="sm" onClick={() => setFilter("active")}>Active</Button>
-          <Button variant={filter === "all" ? "default" : "outline"} size="sm" onClick={() => setFilter("all")}>All</Button>
-        </div>
+    <div className="p-6 md:p-8">
+      <PageHeader
+        title="Triage queue"
+        subtitle="Patients sorted by AI risk score."
+        actions={
+          <div className="flex gap-2">
+            <Button variant={filter === "active" ? "default" : "outline"} size="sm" onClick={() => setFilter("active")}>Active</Button>
+            <Button variant={filter === "all" ? "default" : "outline"} size="sm" onClick={() => setFilter("all")}>All</Button>
+          </div>
+        }
+      />
+
+      <div className="mt-6 grid gap-4 sm:grid-cols-3">
+        <KpiCard icon={Users} label="In queue" value={counts.total} tone="primary" />
+        <KpiCard icon={Activity} label="Pending" value={counts.pending} tone="warning" />
+        <KpiCard icon={AlertTriangle} label="High / critical" value={counts.high} tone="destructive" />
       </div>
 
-      <div className="mt-8 space-y-3">
+      <div className="mt-6 space-y-3">
         {loading ? (
           <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
         ) : items.length === 0 ? (
@@ -72,12 +112,17 @@ function DoctorQueue() {
         ) : (
           items.map((it) => {
             const a = it.assessments?.[0];
+            const display = it.patient_name || it.patient_email || "Patient";
+            const initials = display.slice(0, 2).toUpperCase();
             return (
               <Link key={it.id} to="/cases/$id" params={{ id: it.id }}>
-                <Card className="flex items-center justify-between p-5 transition hover:shadow-elegant">
+                <Card className="flex items-center gap-4 p-5 transition hover:-translate-y-0.5 hover:shadow-elegant">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-mint text-sm font-semibold text-primary">
+                    {initials}
+                  </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <p className="font-medium">{it.profiles?.full_name || it.profiles?.email || "Patient"}</p>
+                      <p className="font-medium">{display}</p>
                       <Badge variant="secondary" className="capitalize">{it.status.replace("_", " ")}</Badge>
                     </div>
                     <p className="mt-0.5 truncate text-sm text-muted-foreground">{it.chief_complaint}</p>
@@ -91,5 +136,34 @@ function DoctorQueue() {
         )}
       </div>
     </div>
+  );
+}
+
+function KpiCard({
+  icon: Icon,
+  label,
+  value,
+  tone,
+}: {
+  icon: typeof Activity;
+  label: string;
+  value: number;
+  tone: "primary" | "warning" | "destructive";
+}) {
+  const toneMap = {
+    primary: "bg-accent text-primary",
+    warning: "bg-warning/15 text-warning",
+    destructive: "bg-destructive/10 text-destructive",
+  } as const;
+  return (
+    <Card className="flex items-center gap-4 p-5">
+      <div className={`flex h-11 w-11 items-center justify-center rounded-xl ${toneMap[tone]}`}>
+        <Icon className="h-5 w-5" />
+      </div>
+      <div>
+        <p className="text-xs uppercase tracking-wider text-muted-foreground">{label}</p>
+        <p className="text-2xl font-semibold">{value}</p>
+      </div>
+    </Card>
   );
 }
