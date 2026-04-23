@@ -5,7 +5,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
 import { format } from "date-fns";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
+import { lazy, Suspense } from "react";
+
+const Charts = lazy(() => import("@/components/AdminCharts"));
 
 export const Route = createFileRoute("/admin/")({
   head: () => ({ meta: [{ title: "Admin — MediTriage AI" }] }),
