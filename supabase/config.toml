@@ -1,1 +1,4 @@
 project_id = "fsyuvvrnzqxcqnijcaag"
+
+[functions.triage]
+verify_jwt = true
