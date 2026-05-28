@@ -6,14 +6,21 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { RiskBadge } from "@/components/RiskBadge";
-import { PageHeader } from "@/components/AppShell";
 import { useAuth } from "@/lib/auth";
 import { format } from "date-fns";
-import { Plus, Loader2, ClipboardList, Activity, AlertTriangle } from "lucide-react";
+import { Plus, Loader2, ChevronDown } from "lucide-react";
 import type { RiskLevel } from "@/lib/risk";
+import { BodyDiagnosis } from "@/components/BodyDiagnosis";
+import {
+  AppointmentsList,
+  BloodPressureChart,
+  ActivityBars,
+  HeartRateCard,
+  CalendarStrip,
+} from "@/components/HealthPanels";
 
 export const Route = createFileRoute("/patient/")({
-  head: () => ({ meta: [{ title: "My Cases — MediTriage AI" }] }),
+  head: () => ({ meta: [{ title: "Health Dashboard — MediTriage AI" }] }),
   component: () => (
     <RequireAuth allowed={["patient", "admin", "doctor"]}>
       <PatientHome />
@@ -42,95 +49,115 @@ function PatientHome() {
       .eq("patient_id", user.id)
       .order("created_at", { ascending: false })
       .then(({ data }) => {
-        setItems((data as any) ?? []);
+        setItems((data as IntakeRow[]) ?? []);
         setLoading(false);
       });
   }, [user]);
 
-  const totalCases = items.length;
-  const highRisk = items.filter((i) => {
-    const r = i.assessments?.[0]?.risk_level;
-    return r === "high" || r === "critical";
-  }).length;
-  const pending = items.filter((i) => i.status === "pending" || i.status === "in_review").length;
+  const latestScore = items[0]?.assessments?.[0]?.risk_score ?? 50;
 
   return (
-    <div className="p-6 md:p-8">
-      <PageHeader
-        title="My Cases"
-        subtitle="Track your assessments and clinician notes."
-        actions={
-          <Link to="/patient/new">
-            <Button className="gap-2 shadow-soft"><Plus className="h-4 w-4" /> New assessment</Button>
-          </Link>
-        }
-      />
+    <div className="space-y-5 p-4 md:p-6">
+      {/* Top row: Health diagnosis + Calendar/appointments */}
+      <div className="grid gap-5 xl:grid-cols-2">
+        {/* Health diagnosis */}
+        <Card className="space-y-4 p-5">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold">Health diagnosis</h2>
+            <button className="flex items-center gap-1 rounded-full bg-muted px-3 py-1 text-xs font-medium">
+              This Day <ChevronDown className="h-3 w-3" />
+            </button>
+          </div>
+          <BodyDiagnosis score={latestScore} />
+        </Card>
 
-      <div className="mt-6 grid gap-4 sm:grid-cols-3">
-        <StatCard icon={ClipboardList} label="Total cases" value={totalCases} tone="primary" />
-        <StatCard icon={Activity} label="Active" value={pending} tone="warning" />
-        <StatCard icon={AlertTriangle} label="High / critical" value={highRisk} tone="destructive" />
+        {/* Calendar + appointments */}
+        <Card className="space-y-4 p-5">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold">Calendar</h2>
+            <span className="text-xs text-muted-foreground">{format(new Date(), "MMM yyyy")}</span>
+          </div>
+          <CalendarStrip />
+          <AppointmentsList />
+        </Card>
       </div>
 
-      <div className="mt-6 space-y-3">
-        {loading ? (
-          <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
-        ) : items.length === 0 ? (
-          <Card className="p-10 text-center">
-            <p className="text-muted-foreground">No cases yet. Submit your symptoms to get a triage assessment.</p>
-            <Link to="/patient/new">
-              <Button className="mt-4">Start an assessment</Button>
-            </Link>
-          </Card>
-        ) : (
-          items.map((it) => {
-            const a = it.assessments?.[0];
-            return (
-              <Link key={it.id} to="/cases/$id" params={{ id: it.id }}>
-                <Card className="flex items-center justify-between gap-4 p-5 transition hover:-translate-y-0.5 hover:shadow-elegant">
-                  <div className="min-w-0">
-                    <p className="truncate font-medium">{it.chief_complaint}</p>
-                    <p className="text-xs text-muted-foreground">{format(new Date(it.created_at), "PPp")}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {a && <RiskBadge level={a.risk_level} score={a.risk_score} />}
-                    <Badge variant="secondary" className="capitalize">{it.status.replace("_", " ")}</Badge>
-                  </div>
-                </Card>
+      {/* Middle row: BP + Activity + Heart rate */}
+      <div className="grid gap-5 md:grid-cols-3">
+        <Card className="md:col-span-1 p-5">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold">Blood pressure</h3>
+            <button className="flex items-center gap-1 rounded-full bg-muted px-2.5 py-0.5 text-[11px]">
+              Today <ChevronDown className="h-3 w-3" />
+            </button>
+          </div>
+          <BloodPressureChart />
+        </Card>
+        <Card className="p-5">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold">Your activity</h3>
+            <button className="flex items-center gap-1 rounded-full bg-muted px-2.5 py-0.5 text-[11px]">
+              Week <ChevronDown className="h-3 w-3" />
+            </button>
+          </div>
+          <ActivityBars />
+        </Card>
+        <HeartRateCard />
+      </div>
+
+      {/* Cases section */}
+      <div>
+        <div className="mb-3 flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold">My cases</h2>
+            <p className="text-xs text-muted-foreground">Recent triage assessments</p>
+          </div>
+          <Link to="/patient/new">
+            <Button className="gap-2 shadow-soft">
+              <Plus className="h-4 w-4" /> New assessment
+            </Button>
+          </Link>
+        </div>
+
+        <div className="space-y-2">
+          {loading ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : items.length === 0 ? (
+            <Card className="p-8 text-center">
+              <p className="text-sm text-muted-foreground">
+                No cases yet. Submit your symptoms to get a triage assessment.
+              </p>
+              <Link to="/patient/new">
+                <Button className="mt-4">Start an assessment</Button>
               </Link>
-            );
-          })
-        )}
+            </Card>
+          ) : (
+            items.map((it) => {
+              const a = it.assessments?.[0];
+              return (
+                <Link key={it.id} to="/cases/$id" params={{ id: it.id }}>
+                  <Card className="flex items-center justify-between gap-4 p-4 transition hover:-translate-y-0.5 hover:shadow-elegant">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium">{it.chief_complaint}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {format(new Date(it.created_at), "PPp")}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {a && <RiskBadge level={a.risk_level} score={a.risk_score} />}
+                      <Badge variant="secondary" className="capitalize">
+                        {it.status.replace("_", " ")}
+                      </Badge>
+                    </div>
+                  </Card>
+                </Link>
+              );
+            })
+          )}
+        </div>
       </div>
     </div>
-  );
-}
-
-function StatCard({
-  icon: Icon,
-  label,
-  value,
-  tone,
-}: {
-  icon: typeof Activity;
-  label: string;
-  value: number;
-  tone: "primary" | "warning" | "destructive";
-}) {
-  const toneMap = {
-    primary: "bg-accent text-primary",
-    warning: "bg-warning/15 text-warning",
-    destructive: "bg-destructive/10 text-destructive",
-  } as const;
-  return (
-    <Card className="flex items-center gap-4 p-5">
-      <div className={`flex h-11 w-11 items-center justify-center rounded-xl ${toneMap[tone]}`}>
-        <Icon className="h-5 w-5" />
-      </div>
-      <div>
-        <p className="text-xs uppercase tracking-wider text-muted-foreground">{label}</p>
-        <p className="text-2xl font-semibold">{value}</p>
-      </div>
-    </Card>
   );
 }
